@@ -1,0 +1,35 @@
+A basic conceptron implementation.
+
+Paper: Paper /Cell Assemblies in the Cerebral Cortex/, V. Braitenberg 1977
+
+Reading:
+- Prof. Santosh Vampala /Assemblies of Neurons/
+- Prof. Günther Palm /Cell Assemblies/
+- Prof. Murray Sherman summarizing thalamo-cortical circuits [[[https://www.youtube.com/live/aB2M1gg_1sU?si=-tKdJtPQzihAm-0Z][Talk 1]], [[https://youtu.be/AJa7JRTnZFI?si=zOfEEoNMjIVXCoOz][2]], [[https://youtu.be/ewp6irfhJ_Q?si=QE-5zHN6tmJtQowV][3]] these are all super dense and elucidating].
+
+
+* The Conceptron
+
+The conceptron is a hypothetical formalism with the goal of modeling a rich set of essential, computational properties
+of human cerebral cortex implemenents and it's nuclei.
+
+In the spirit and fasion of Hebbs /Cell Assemblies/ [[[https://en.wikipedia.org/wiki/Hebbian_theory][Hebbian theory]], Braitenberg 1977[fn:1]]. This is an attempt at finding a
+level up from the neurons, trying to see the forest instead of the trees so to speak.
+
+The goal is to find and describe a computational substrate, or building blocks. The goal is not a detailed model of
+biological neuronal nets, each element is idealized and abstracted, but should be evolutionarily plausible.
+
+Assembly calculus with wires.
+
+* Assembly Calculus
+
+
+
+
+* Footnotes
+
+[fn:1]
+
+Braitenberg 1977 /On the Texture of Brains -An Introduction to Neuroanatomy for the Cybernetically Minded/.
+
+And the paper /Cell Assemblies in the Cerebral Cortex/.
