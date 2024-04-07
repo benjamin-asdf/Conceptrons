@@ -54,14 +54,18 @@
 
 ;; ====================== assembly calculus ======================
 
+
 (defn ->edges
   [n-neurons density]
   (let [m (dtt/compute-tensor [n-neurons n-neurons]
                               (fn [_ _]
                                 (< (fm.rand/frand) density))
                               :boolean)
+        ;; consider literature on 'autapses'
+        ;; perhaps allowing self connections is totally fine.
         diag (dtype-fn/not (eye n-neurons))]
     (dtt/clone (dtype-fn/and m diag))))
+
 
 (defn ->random-directed-graph
   [n-neurons density]
@@ -130,6 +134,8 @@
 (defn cap-k [{:keys [cap-k-k synaptic-input] :as state}]
   (assoc state :activations (cap-k-1 cap-k-k synaptic-input)))
 
+
+
 ;;
 ;; Dale's law (Eccles, 1964) states that a neuron can only excite or inhibit its target neurons, but not both.
 ;; Our inhibition model is in principle modeling a population of inhibitory neurons.
@@ -154,8 +160,6 @@
 ;; We make I a little slugish to change, producing a hysteresis effect.
 ;;
 ;;
-;;
-;;
 ;; case 0):
 ;; Some steady state where I(t), the proportion of inhibitory neurons,
 ;; and E(t), the proportion of excitatory neurons are balancing, so that E(t) count stays at some medium level
@@ -178,12 +182,38 @@
 ;;
 ;;
 
-
 (defn threshold-inhibition-1 [threshold synaptic-input]
   (argops/argfilter #(< threshold %) synaptic-input))
 
 
+;; Still thinking about the threshold-device.
 
+;; =====================
+;; threshold-device-inhibition
+;; =====================
+;;
+;;
+;; target-n: the number of neurons that should be active
+;;
+;; 1. calculate an error
+;; 2. if error is positive, we are under the target, so we need to inhibit more
+;; 3. if error is negative, we are over the target, so we need to inhibit less
+;;
+;; Error can be calculated:
+;; - the difference between the target-n and the current number of active neurons
+;; - the ratio between the target-n and the current number of active neurons
+;;
+;; The threshold is then updated by the error.
+;;
+;;
+;; Note that `threshold` is a number which models the output of the inhibitory neurons.
+;;
+;;
+
+(defn threshold-device-inhibition
+  [{:as state
+    :keys [threshold synaptic-input last-threshold target-n
+           threshold-device-damping activations]}])
 
 
 
@@ -192,7 +222,6 @@
 ;; ----------------
 ;;
 ;; This is a 'excitability' concept on the sub-neuronal-area level.
-;; (I like to flip the concept of threshold to excitability).
 ;; In the simplest case this says that if I was active recently I am less eager to be active again.
 ;; Or to say it the other way around 'fresh' neurons have a high excitability.
 ;;
@@ -288,26 +317,25 @@
           :synaptic-input
           (fn [input]
             (time
-             (dtype-fn//
-              input
-              (-> (dtt/reduce-axis
-                   (into
-                    []
-                    (map (fn [indices]
-                           (dtt/compute-tensor
-
-                            (some-fn
-                             (bitmap/bitmap-value->map
-                              indices
-                              1)
-                             (constantly 0))
-                            :int32))
-                         (take attenuation-hist-n
-                               activation-history)))
-                   dtype-fn/sum
-                   0)
-                  (dtype-fn/* attenuation-malus)
-                  (dtype-fn/+ attenuation-epsilon)))))))
+              (dtype-fn//
+                input
+                (-> (dtt/reduce-axis
+                      (into
+                        []
+                        (map (fn [indices]
+                               (dtt/compute-tensor
+                                 (some-fn
+                                   (bitmap/bitmap-value->map
+                                     indices
+                                     1)
+                                   (constantly 0))
+                                 :int32))
+                          (take attenuation-hist-n
+                                activation-history)))
+                      dtype-fn/sum
+                      0)
+                    (dtype-fn/* attenuation-malus)
+                    (dtype-fn/+ attenuation-epsilon)))))))
 
 (defn update-neuronal-area
   [{:as state
@@ -460,9 +488,6 @@
        (cap-k 100 synaptic-input))
      :plasticity 0.1
      :plasticity-model hebbian-plasticity})
-
-
-
 
 
   (time
@@ -663,46 +688,11 @@
               (update-neuronal-area)
               (update-neuronal-area))]
       [state
-       (attenuation state)]))
-
-
-  )
+       (attenuation state)])))
 
 
 
 ;; ===================
 ;; Threshold device
 ;; ===================
-
-(comment
-
-  (time
-   (->
-    (append-activations
-     (->neuronal-area 1000)
-     (rand-stimulus 100 1000))
-    (update-neuronal-area)
-    (append-activations
-     (rand-stimulus 100 1000))
-    (update-neuronal-area)
-    (update-neuronal-area)
-    (update-neuronal-area)
-    (update-neuronal-area)))
-
-
-  (append-activations
-   (assoc
-    (->neuronal-area 1000)
-    :inhibition-model
-
-    )
-   (rand-stimulus 100 1000))
-
-
-
-
-
-
-
-
-  )
+;; wip

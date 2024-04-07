@@ -1,4 +1,4 @@
-A basic conceptron implementation.
+A basic conceptron implementation [wip].
 
 Paper: Paper /Cell Assemblies in the Cerebral Cortex/, V. Braitenberg 1977
 
@@ -7,23 +7,67 @@ Reading:
 - Prof. Günther Palm /Cell Assemblies/
 - Prof. Murray Sherman summarizing thalamo-cortical circuits [[[https://www.youtube.com/live/aB2M1gg_1sU?si=-tKdJtPQzihAm-0Z][Talk 1]], [[https://youtu.be/AJa7JRTnZFI?si=zOfEEoNMjIVXCoOz][2]], [[https://youtu.be/ewp6irfhJ_Q?si=QE-5zHN6tmJtQowV][3]] these are all super dense and elucidating].
 
-
 * The Conceptron
 
-The conceptron is a hypothetical formalism with the goal of modeling a rich set of essential, computational properties
-of human cerebral cortex implemenents and it's nuclei.
 
-In the spirit and fasion of Hebbs /Cell Assemblies/ [[[https://en.wikipedia.org/wiki/Hebbian_theory][Hebbian theory]], Braitenberg 1977[fn:1]]. This is an attempt at finding a
+The concept is a hypothetical formalism to model a rich set of essential, computational properties
+of the human cerebral cortex implements and its nuclei.
+
+In the spirit and fashion of Hebbs /Cell Assemblies/ [[[https://en.wikipedia.org/wiki/Hebbian_theory][Hebbian theory]], Braitenberg 1977[fn:1]]. This is an attempt to find a
 level up from the neurons, trying to see the forest instead of the trees so to speak.
 
 The goal is to find and describe a computational substrate, or building blocks. The goal is not a detailed model of
 biological neuronal nets, each element is idealized and abstracted, but should be evolutionarily plausible.
 
-Assembly calculus with wires.
+---
+
+I want to give the assembly calculus:
+
+- some wires (between nuclei and areas), inspired by M. Sherman's work on Thalamus
+- a thought-pump, from Braitenberg [1977] and G. Palm.
+- ... travling waves? geometry? holographic encoding? hdv?
+
+That would then be the complete formalism =Conceptron=.
+
+The name conceptron is from Braitenbergs 1977 paper /Cell Assemblies in the Cerebral Cortex/.
+It's the functional unit that implements concepts, I suppose. Comes from Perceptron and Neuron.
+Its fundamental property is how it represents interpretations as 'excitation modes' in its network, called cell assemblies [Hebb].
+
+* Functional Properties of brain software (or cognition software)
+
+- Very fast (100ms to recognize a new object)
+- Doesn't need many data points to make sense of new objects or something, is on the fly
+- It is highly dynamic and robust
+- It confabulates
+- It supports creative thought and explanation structures
+- It supports multi-sensory integration
+- It creates magical interfaces to user-level entities, which it uses to navigate the world
+- It is energy efficient (presumably its information processing is sparse)
+- Presumably very parallel (how else so fast)
+- Presumably high-dimensional (how else this malleability of ideas, sub-ideas make sense, vague ideas make sense, perspective and so forth).
+- Language acquisition is presumably a bit of a window into the ad-hoc epistemology it creates.
+- It makes analogies
+- It generalizes rules and regularities
+- It can associate and pattern complete
+- It creates an on-the-fly interpretation of the world and the animal which it is navigating.
+- It can create highly derived and abstract ideas and idea structures on the fly, can compare them and so forth.
+  And all that is recorded in mid-term memory, which is accessible via magic interfaces again.
+- It has mid-term memory, which breaks when the hippocampus is broken (HM).
+- I guess now I can insert all of cognitive neuroscience: attention, movement, planning, working memory, etc. etc.
+- It needs to sleep and dream to function
+
+
+Brain software is somewhat different compared to the computers we have currently. In some ways, brain software is the
+real deal. And our computers are just the first clumsy attempts at making a computer.
+But note that machine intelligences, or human-machine cyberborgs, uploaded minds, etc. Will enjoy the benefits of both current computer technology
+together with the high-creativity, high-on-the-fly, high-multi-processing-integration computational paradigm of cognition software.
 
 * Assembly Calculus
 
+=ac.clj= is an implementation of Prof. Santosh Vampalas assembly calculus. [wip]
+[[https://arxiv.org/abs/2110.03171][Assemblies of Neurons Learn to Classify Well-Separated Distributions]], [[https://faculty.cc.gatech.edu/~vempala/][Santosh S. Vempala's homepage]].
 
+Using [[https://github.com/cnuernber/dtype-next][dtype-next]].
 
 
 * Footnotes
