@@ -54,7 +54,6 @@
 
 ;; ====================== assembly calculus ======================
 
-
 (defn ->edges
   [n-neurons density]
   (let [m (dtt/compute-tensor [n-neurons n-neurons]
@@ -264,7 +263,7 @@
 ;;          n-hist                                |
 ;;                          +---------------------+
 ;;                          |
-;;  2. apply malus          | (+ an epsilon so we don't devide by zero)
+;;  2. apply malus          | + 1, so we don't divide by less than 1
 ;;                          |
 ;;                          v
 ;;     +----+            +----+
@@ -296,46 +295,43 @@
 ;; only make sense to compare within a time step.
 ;;
 ;; attenuation-malus
-;; More than 1: The first time you are active, you immediately are less eager.
-;; 0.5: You actually get more eager after being active once, even after 2 and less eager after 3
-;; This is biologically intuitively a bit strange. But interesting to consider.
-;; Since biological neural nets are messy with modulators comming and so forth; This might model
-;; something happening.
-;; Exactly 1.0: If you have 1 neuron timestep in the history, it doesn't matter. Half the synaptic input
-;; after 2 times in the hist and so forth.
 ;;
-;; The answer would be somewhere in biological literature. But I am an engineer.
-;; I'll just say that attenuation-hist-n is something like 10 and factor is something like 1.1
+;; 0: no attenuation
+;;
+;; between 0 and 1
+;;
+;; Exactly 1.0: Half the synaptic input after being active 1 and so forth
+;;
+;; I'll just say that attenuation-hist-n is something like 10 and factor is something like 0.1
 ;;
 
 (defn attenuation
   [{:as state
     :keys [attenuation-malus synaptic-input
-           attenuation-epsilon attenuation-hist-n
-           activation-history]}]
+           attenuation-hist-n activation-history]}]
   (update state
           :synaptic-input
           (fn [input]
             (time
-              (dtype-fn//
-                input
-                (-> (dtt/reduce-axis
-                      (into
-                        []
-                        (map (fn [indices]
-                               (dtt/compute-tensor
-                                 (some-fn
-                                   (bitmap/bitmap-value->map
-                                     indices
-                                     1)
-                                   (constantly 0))
-                                 :int32))
-                          (take attenuation-hist-n
-                                activation-history)))
-                      dtype-fn/sum
-                      0)
-                    (dtype-fn/* attenuation-malus)
-                    (dtype-fn/+ attenuation-epsilon)))))))
+             (dtype-fn//
+              input
+              (-> (dtt/reduce-axis
+                   (into
+                    []
+                    (map (fn [indices]
+                           (dtt/compute-tensor
+                            (some-fn
+                             (bitmap/bitmap-value->map
+                              indices
+                              1)
+                             (constantly 0))
+                            :int32))
+                         (take attenuation-hist-n
+                               activation-history)))
+                   dtype-fn/sum
+                   0)
+                  (dtype-fn/* attenuation-malus)
+                  (dtype-fn/+ 1.0)))))))
 
 (defn update-neuronal-area
   [{:as state
@@ -529,6 +525,8 @@
 
   ;; if I give you A, do you pattern complete to something that is a little bit like B?
 
+  ( state-with-and-b)
+
   (dtype/ecount
    (bitmap/reduce-intersection
     [(read-activations
@@ -536,6 +534,7 @@
        (append-activations state-with-and-b stimulus-a)))
      ;; these is basically B
      (read-activations state-with-and-b)]))
+
   59
 
 
@@ -649,8 +648,6 @@
 ;; attenuation
 ;; =================
 (comment
-
-
   (let [n-neurons 3]
     (attenuation
      (update-neuronal-area

@@ -1,3 +1,5 @@
-{:deps {cnuernber/dtype-next {:mvn/version "10.112"}
-        generateme/fastmath {:mvn/version "2.4.0"}}
+{:deps
+ {cnuernber/dtype-next {:mvn/version "10.112"}
+  techascent/tech.ml.dataset {:mvn/version "7.029"}
+  generateme/fastmath {:mvn/version "2.4.0"}}
  :paths ["src"]}
