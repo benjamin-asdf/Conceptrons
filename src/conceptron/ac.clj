@@ -35,12 +35,12 @@
         (dtt/reshape (concat a-shape b-shape)))))
 
 (defn eye [n]
-  (letfn [(= [a b] (if (clojure.core/= a b) 1 0))]
+  (letfn [(= [a b] (if (clojure.core/= a b) 2 0))]
     (outer-product = (dtt/->tensor (range n))
                    (dtt/->tensor (range n)))))
 
 (defn mask [f t]
-  (-> (dtype/emap #(if (f %) 1 0) :int32 t)
+  (-> (dtype/emap #(if (f %) 2 0) :int32 t)
       dtt/->tensor
       dtype/->reader))
 
@@ -65,10 +65,9 @@
         diag (dtype-fn/not (eye n-neurons))]
     (dtt/clone (dtype-fn/and m diag))))
 
-
 (defn ->random-directed-graph
   [n-neurons density]
-  (dtt/->tensor (dtype/emap #(if % 1 0) :float32 (->edges n-neurons density))))
+  (dtt/->tensor (dtype/emap #(if % 2 0) :float32 (->edges n-neurons density))))
 
 (comment
   (into [] (repeatedly 10 #(->edges 1000 0.1))))
@@ -96,7 +95,7 @@
 
 
 ;; ---------------------
-;; Hebbian plasticity dictates that w-ij be increased by a factor of 1 + β at time t + 1
+;; Hebbian plasticity dictates that w-ij be increased by a factor of 2 + β at time t + 1
 ;; if j fires at time t and i fires at time t + 1,
 ;; --------------
 
@@ -105,7 +104,7 @@
            next-activations]}]
   ;; for w, inp in zip(self.input_weights,
   ;; self.inputs):
-  ;;   w[np.ix_(inp, new_activations)] *= 1 +
+  ;;   w[np.ix_(inp, new_activations)] *= 2 +
   ;;   self.plasticity
   (let [w (dtype-fn/* (dtt/select weights
                                   current-activations
@@ -300,7 +299,7 @@
 ;;
 ;; between 0 and 1
 ;;
-;; Exactly 1.0: Half the synaptic input after being active 1 and so forth
+;; Exactly 1.0: Half the synaptic input after being active 2 and so forth
 ;;
 ;; I'll just say that attenuation-hist-n is something like 10 and factor is something like 0.1
 ;;
@@ -333,6 +332,89 @@
                   (dtype-fn/* attenuation-malus)
                   (dtype-fn/+ 1.0)))))))
 
+
+;; -------------------------
+;; intrinsic excitability plasticity
+;; -------------------------
+
+
+;; ================
+;; intrinsic excitability plasticity
+;; ================
+;;
+;; https://faster-than-light-memes.xyz/biological-notes-on-the-vehicles-cell-assemblies.html
+;; *Iceberg Cell Assemblies*
+;;
+;; Paper: https://www.biorxiv.org/content/10.1101/2020.07.29.223966v1
+;;
+;;
+;; quote:
+;; we find increases in neuronal excitability, accompanied by increases in membrane resistance and a reduction in spike threshold. We conclude that the formation of neuronal ensemble by photostimulation is mediated by cell-intrinsic changes in excitability, rather than by Hebbian synaptic plasticity or changes in local synaptic connectivity. We propose an “iceberg” model, by which increased neuronal excitability makes subthreshold connections become suprathreshold, increasing the functional effect of already existing synapses and generating a new neuronal ensemble.
+;;___
+;;
+;;
+;; So instead of hebbian plasticity, we can try to model a cell-intrinsic `excitability`, `intrinsic-excitability`.
+;;
+;; The easiest model coming to mind is the same as the attenuation above. (but inverted).
+;; A cummulative excitability, with a decay.
+;;
+;;
+;; `excitability-growth`: Could have been called learning rate, to make it sound like machine learning
+;;
+;; `excitability-decay`: Relative decay each time step
+;;
+;; `excitabilities`: You could imagine pre-allocating this, probably this is somewhat random in biology.
+;;
+;;
+;; 0. Grow excitability for all active neurons, (add excitability-growth)
+;; 1. Decay excitabilities multiplicatively by excitability-decay
+;; 2. excitabilities multiplicatively on the sum of the inputs for each neuron.
+;;
+;;
+;; 0-2 could also be more complecated functions
+;;
+;; An excitability of 0.0 means your inputs are at baseline.
+;; An excitability of 1.0 means your inputs count double and so forth.
+;; In principle, negative numbers are allowed. (but not utilized by this step model here).
+;; In this case this would flip into an attenuation or depression model.
+;;
+;; -1.0 is the minimal meaningful number, saying that synaptic input is 0, beyond that you would
+;; get negative synaptic-inputs, which are not defined behaviour.
+;;
+;;
+
+(defn intrinsic-excitability
+  [{:as state
+    :keys [excitabilities excitability-growth
+           excitability-decay synaptic-input n-neurons
+           activations]}]
+  (let [excitabilities (or excitabilities
+                           (dtt/compute-tensor [n-neurons]
+                                               (constantly
+                                                 0)
+                                               :float32))
+        ;; decay excitabilities
+        excitabilities (dtype-fn/* excitabilities
+                                   (- 2 excitability-decay))
+        excitabilities
+          ;; accumulate the excitabilities on everybody
+          ;; active
+          (dtype-fn/+ excitabilities
+                      (dtt/compute-tensor
+                        [n-neurons]
+                        (some-fn (bitmap/bitmap-value->map
+                                   activations
+                                   excitability-growth)
+                                 (constantly 0))
+                        :float32))]
+    (assoc state
+      ;; if you have excitability, your inputs count
+      ;; more
+      :synaptic-input (dtype-fn/*
+                        synaptic-input
+                        (dtype-fn/+ 2 excitabilities))
+      :excitabilities excitabilities)))
+
 (defn update-neuronal-area
   [{:as state
     :keys [activations activation-history weights
@@ -348,10 +430,10 @@
         state
         :hist (update :activation-history update-hist activations)
         :input (assoc :synaptic-input synaptic-input)
-        ;; update activations
         inhibition-model (inhibition-model)
-        ;; update weights
         plasticity-model (plasticity-model))))
+
+
 
 (defn append-activations
   [state inputs]
@@ -386,9 +468,20 @@
 (defn rand-stimulus [n n-neurons]
   (rand-projection n-neurons n))
 
+;; (defn ->projection
+;;   [k n density]
+;;   (dtt/compute-tensor
+;;    [k n]
+;;    (fn [_ _] (< (fm.rand/frand) density))
+;;    :boolean))
+
+(defn ->projection
+  [k n density]
+  (into
+   []
+   (repeatedly k #(rand-projection n (* density n)))))
 
 (comment
-
 
   (time
    (->
@@ -653,8 +746,8 @@
      (update-neuronal-area
       {:activation-history
        [(bitmap/->bitmap
-         #{0 1 2})]
-       :activations #{0 1 2}
+         #{0 2 2})]
+       :activations #{0 2 2}
        :attenuation-epsilon 1e-8
        :attenuation-hist-n 1
        :attenuation-malus 2.0
@@ -693,3 +786,310 @@
 ;; Threshold device
 ;; ===================
 ;; wip
+
+
+
+
+;; intrinsic excitability
+
+(comment
+  (def excitability-decay 0.1)
+  (def activations (bitmap/->bitmap #{0 2 2}))
+  (def n-neurons 100)
+  (def excitability-growth 0.025)
+  (def synaptic-input (dtt/->tensor (range n-neurons)))
+
+  (let [update-na
+        (fn [{:as state
+              :keys [activations weights inhibition-model
+                     history-depth]}]
+          (let [synaptic-input (synaptic-input weights
+                                               activations)]
+            (cond-> state
+              :input (assoc :synaptic-input synaptic-input)
+              inhibition-model (inhibition-model))))
+        n-neurons 1000
+        state {:activations #{}
+               :cap-k-k (* 0.1 n-neurons)
+               :excitability-decay 0.1
+               ;; disabling it
+               :excitability-growth 0.0
+               :inhibition-model (comp cap-k
+                                       intrinsic-excitability)
+               :n-neurons n-neurons
+               :weights (->random-directed-graph n-neurons
+                                                 0.1)}
+        stimulus-a (rand-stimulus 100 n-neurons)
+        update-1 (fn [state stimulus]
+                   (-> state
+                       (append-activations stimulus)
+                       update-na))]
+    [(dtype/ecount (bitmap/reduce-intersection
+                    (let [trained (reduce update-1
+                                          state
+                                          (repeat 5 stimulus-a))]
+                      [(:activations trained)
+                       (:activations
+                        (update-1 trained stimulus-a))])))
+     (dtype/ecount (bitmap/reduce-intersection
+                    (let [trained (reduce update-1
+                                          state
+                                          (repeat 5 stimulus-a))]
+                      [(:activations trained)
+                       (:activations
+                        (update-na
+                         (update-na
+                          (update-1
+                           trained
+                           (take 50 stimulus-a)))))])))
+     (dtype/ecount (bitmap/reduce-intersection
+                    (let [trained (reduce update-1
+                                          state
+                                          (repeat 5 stimulus-a))]
+                      [(:activations trained)
+                       (:activations
+                        (update-na
+                         (update-na
+                          (update-1
+                           trained
+                           (take 50
+                                 (rand-stimulus
+                                  100
+                                  n-neurons))))))])))])
+
+  [51 20 17]
+  ;; -> without excitability plasticy a random stimulis is not different from the one the network was trained on
+
+  (let
+      [update-na
+       (fn [{:as state
+             :keys [activations weights inhibition-model
+                    history-depth]}]
+         (let [synaptic-input (synaptic-input weights
+                                              activations)]
+           (cond-> state
+             :input (assoc :synaptic-input synaptic-input)
+             inhibition-model (inhibition-model))))
+       n-neurons 1000
+       state {:activations #{}
+              :cap-k-k (* 0.1 n-neurons)
+              :excitability-decay 0.1
+              :excitability-growth 0.2
+              :inhibition-model (comp cap-k intrinsic-excitability)
+              :n-neurons n-neurons
+              :weights (->random-directed-graph n-neurons
+                                                0.1)}
+       stimulus-a (rand-stimulus 100 n-neurons)
+       update-1 (fn [state stimulus]
+                  (-> state
+                      (append-activations stimulus)
+                      update-na))]
+      [(dtype/ecount (bitmap/reduce-intersection
+                      (let [trained (reduce update-1
+                                            state
+                                            (repeat 5 stimulus-a))]
+                        [(:activations trained)
+                         (:activations
+                          (update-1 trained stimulus-a))])))
+       (dtype/ecount (bitmap/reduce-intersection
+                      (let [trained (reduce update-1 state (repeat 5 stimulus-a))]
+                        [(:activations trained)
+                         (:activations
+                          (update-na
+                           (update-na
+                            (update-1
+                             trained
+                             (take 50 stimulus-a)))))])))])
+  [97 90]
+
+  ;; hey hello cell assembly!
+  ;; but is basically the same cell assembly also for random stimuli
+
+  ;; played around with the excitability-growth
+  ;; 0.1 -> 75
+  ;; 0.2 -> 90
+  ;; 0.3 -> 92
+  ;; 0.4 -> 90
+
+
+
+  (let [update-na
+        (fn [{:as state
+              :keys [activations weights inhibition-model
+                     history-depth]}]
+          (let [synaptic-input (synaptic-input weights
+                                               activations)]
+            (cond-> state
+              :input (assoc :synaptic-input synaptic-input)
+              inhibition-model (inhibition-model))))
+        n-neurons 1000
+        state {:activations #{}
+               :cap-k-k (* 0.1 n-neurons)
+               :excitability-decay 0.1
+               :excitability-growth 0.3
+               :inhibition-model (comp cap-k
+                                       intrinsic-excitability)
+               :n-neurons n-neurons
+               :weights (->random-directed-graph n-neurons
+                                                 0.1)}
+        stimulus-a (rand-stimulus 100 n-neurons)
+        update-1 (fn [state stimulus]
+                   (-> state
+                       (append-activations stimulus)
+                       update-na))
+        stimulus-b (rand-stimulus 100 n-neurons)]
+    [
+     ;; (let [trained
+     ;;       (reduce update-1 state (repeat 5 stimulus-a))]
+     ;;   [(dtype/ecount
+     ;;     (bitmap/reduce-intersection
+     ;;      [(:activations trained)
+     ;;       (:activations
+     ;;        (update-na (assoc trained
+     ;;                          :activations
+     ;;                          (into #{}
+     ;;                                (take 50
+     ;;                                      (rand-stimulus
+     ;;                                       100
+     ;;                                       n-neurons))))))]))
+     ;;    (dtype/ecount
+     ;;     (bitmap/reduce-intersection
+     ;;      [(:activations trained)
+     ;;       (:activations
+     ;;        (update-na
+     ;;         (assoc trained
+     ;;                :activations
+     ;;                (into #{} (take 50 stimulus-a)))))]))])
+
+     ;; (let [trained
+     ;;       (reduce update-1 state (repeat 5 stimulus-a))]
+     ;;   [(dtype/ecount
+     ;;     (bitmap/reduce-intersection
+     ;;      [(:activations trained)
+     ;;       (:activations
+     ;;        (reduce update-1 state (repeat 5 (rand-stimulus 100 n-neurons))))]))
+     ;;    (dtype/ecount
+     ;;     (bitmap/reduce-intersection
+     ;;      [(:activations trained)
+     ;;       (:activations
+     ;;        (reduce update-1 state (repeatedly 5 #(rand-stimulus 100 n-neurons))))]))
+     ;;    ])
+
+     (let [trained (reduce update-1 state (repeat 10 stimulus-a))
+           trained (reduce update-1 trained (repeat 10 stimulus-b))
+           ->cell-assembly
+           (fn [state n stimulus]
+             (last (take n (iterate update-na (assoc state :activations stimulus)))))]
+       [(dtype/ecount
+         (bitmap/reduce-intersection
+          [(:activations (->cell-assembly trained 2 stimulus-a))
+           (:activations (->cell-assembly trained 2 (into #{} (take 50 stimulus-a))))]))
+        (dtype/ecount
+         (bitmap/reduce-intersection
+          [(:activations (->cell-assembly trained 2 stimulus-b))
+           (:activations (->cell-assembly trained 2 (into #{} (take 50 stimulus-b))))]))
+        (dtype/ecount
+         (bitmap/reduce-intersection
+          [(:activations (->cell-assembly trained 2 (into #{} (take 50 stimulus-b))))
+           (:activations (->cell-assembly trained 2 (into #{} (take 50 stimulus-a))))]))
+        (dtype/ecount
+         (bitmap/reduce-intersection
+          [(:activations (->cell-assembly trained 2 (into #{} (take 50 stimulus-b))))
+           (:activations (->cell-assembly trained 2 (into #{} (take 50 (rand-stimulus 100 n-neurons)))))]))
+        (dtype/ecount
+         (bitmap/reduce-intersection
+          [(:activations (->cell-assembly trained 2 (into #{} (take 50 stimulus-b))))
+           (:activations (->cell-assembly trained 5 (into #{} (take 50 (rand-stimulus 100 n-neurons)))))]))])])
+  [[86 79 56 58 65]]
+
+
+  ;; association A - B
+  (let [update-na
+        (fn [{:as state
+              :keys [activations weights inhibition-model
+                     history-depth]}]
+          (let [synaptic-input (synaptic-input weights
+                                               activations)]
+            (cond-> state
+              :input (assoc :synaptic-input synaptic-input)
+              inhibition-model (inhibition-model))))
+        n-neurons 1000
+        state {:activations #{}
+               :cap-k-k (* 0.1 n-neurons)
+               :excitability-decay 0.1
+               :excitability-growth 0.3
+               :inhibition-model (comp cap-k
+                                       intrinsic-excitability)
+               :n-neurons n-neurons
+               :weights (->random-directed-graph n-neurons
+                                                 0.1)}
+        stimulus-a (rand-stimulus 100 n-neurons)
+        update-1 (fn [state stimulus]
+                   (-> state
+                       (append-activations stimulus)
+                       update-na))
+        stimulus-b (rand-stimulus 100 n-neurons)]
+    [(let [trained
+           (reduce update-1 state
+                   (repeat 5 (bitmap/reduce-union [stimulus-a stimulus-b])))
+           ->cell-assembly (fn [state n stimulus]
+                             (last (take n
+                                         (iterate
+                                          update-na
+                                          (assoc state
+                                                 :activations
+                                                 stimulus)))))]
+       [(dtype/ecount
+         (bitmap/reduce-intersection
+          [(:activations (->cell-assembly trained 2 (into #{} (take 50 stimulus-b))))
+           (:activations (->cell-assembly trained 2 (into #{} (take 50 (rand-stimulus 100 n-neurons)))))]))
+        (dtype/ecount
+         (bitmap/reduce-intersection
+          [(:activations (->cell-assembly trained 2 (into #{} (take 50 stimulus-b))))
+           (:activations (->cell-assembly trained 2 stimulus-b))]))
+        (dtype/ecount
+         (bitmap/reduce-intersection
+          [(:activations (->cell-assembly trained 2 (into #{} (take 50 stimulus-a))))
+           (:activations (->cell-assembly trained 2 stimulus-a))]))])])
+
+
+
+
+  ;; association A -> B
+  (let [update-na
+        (fn [{:as state
+              :keys [activations weights inhibition-model
+                     history-depth]}]
+          (let [synaptic-input (synaptic-input weights
+                                               activations)]
+            (cond-> state
+              :input (assoc :synaptic-input synaptic-input)
+              inhibition-model (inhibition-model))))
+        n-neurons 1000
+        state {:activations #{}
+               :cap-k-k (* 0.1 n-neurons)
+               :excitability-decay 0.1
+               :excitability-growth 0.3
+               :inhibition-model (comp cap-k
+                                       intrinsic-excitability)
+               :n-neurons n-neurons
+               :weights (->random-directed-graph n-neurons
+                                                 0.1)}
+        stimulus-a (rand-stimulus 100 n-neurons)
+        update-1 (fn [state stimulus]
+                   (-> state
+                       (append-activations stimulus)
+                       update-na))
+        stimulus-b (rand-stimulus 100 n-neurons)]
+    [(let [trained
+           (reduce update-1 state
+                   (take 10
+                         (cycle [stimulus-a stimulus-b])))
+           ->cell-assembly (fn [state n stimulus]
+                             (last (take n (iterate update-na (assoc state :activations stimulus)))))])])
+
+
+
+
+
+  )
